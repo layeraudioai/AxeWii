@@ -1,4 +1,3 @@
---
 AxeWii
 --
 Use guitar hero guitars as midi instruments with soundfont rendering, sf2 import, midi import, and graded playback. Fine tune notes with the stick, strum with the strum bar, play individual frets, open notes, chords, and more.
