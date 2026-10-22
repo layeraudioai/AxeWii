@@ -102,6 +102,8 @@ namespace AxeWii.Core
         public string TrackName { get; set; } = "Guitar Lead";
         public bool Hit { get; set; }
         public HitJudgment Judgment { get; set; } = HitJudgment.None;
+        public bool PlayedAudio { get; set; }
+        public bool StoppedAudio { get; set; }
     }
 
     public class MidiTrackInfo

@@ -93,13 +93,13 @@ namespace AxeWii.Audio
                 // 2. Setup MonoGame real-time DynamicSoundEffectInstance audio output
                 _dynamicSound = new DynamicSoundEffectInstance(SampleRate, AudioChannels.Stereo);
                 _dynamicSound.BufferNeeded += (sender, e) => StreamAudioChunk();
-                _dynamicSound.Play();
 
-                // Prime initial buffers
-                for (int i = 0; i < 3; i++)
+                // Prime initial buffers BEFORE calling Play() to prevent startup underrun
+                for (int i = 0; i < 4; i++)
                 {
                     StreamAudioChunk();
                 }
+                _dynamicSound.Play();
 
                 if (!IsLoaded)
                 {
@@ -263,9 +263,28 @@ namespace AxeWii.Audio
             }
         }
 
+        public void Update()
+        {
+            if (_dynamicSound != null)
+            {
+                try
+                {
+                    while (_dynamicSound.PendingBufferCount < 3)
+                    {
+                        StreamAudioChunk();
+                    }
+                    if (_dynamicSound.State != SoundState.Playing)
+                    {
+                        _dynamicSound.Play();
+                    }
+                }
+                catch { }
+            }
+        }
+
         private void StreamAudioChunk()
         {
-            if (_dynamicSound == null || _dynamicSound.State != SoundState.Playing) return;
+            if (_dynamicSound == null) return;
 
             try
             {

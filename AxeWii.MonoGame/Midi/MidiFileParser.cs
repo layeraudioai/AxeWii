@@ -33,7 +33,7 @@ namespace AxeWii.Midi
             float beat = 60f / song.Bpm;
 
             // Generate an engaging musical riff pattern
-            for (float t = 2.0f; t < 118.0f; t += beat * (rand.NextDouble() > 0.4 ? 0.5f : 1.0f))
+            for (float t = 0.8f; t < 118.0f; t += beat * (rand.NextDouble() > 0.4 ? 0.5f : 1.0f))
             {
                 int pitch = 40 + rand.Next(30);
                 string fret = fretPool[rand.Next(fretPool.Length)];

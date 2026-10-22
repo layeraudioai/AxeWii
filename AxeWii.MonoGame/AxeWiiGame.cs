@@ -18,11 +18,14 @@ namespace AxeWii
     /// <summary>
     /// AxeWii: Guitar Hero 3 MIDI & Spatial Synthesizer Studio.
     /// Complete C# / MonoGame Desktop Port.
-    /// Supports direct Bluetooth Wiimote WebHID (no dongles or middleman software),
-    /// MeltySynth SoundFont 2 (.sf2) & General MIDI synthesis with real-time PCM audio streaming,
-    /// native desktop file import dialogs for .sf2 and .mid, in-game song library scanner,
-    /// 3D downward rolling rhythm highway, 3D physical guitar neck & body visualizer,
-    /// 5-panel HUD studio, and smart polyphonic MIDI transcription.
+    /// Features:
+    /// - Continuous real-time audio playback through DynamicSoundEffectInstance
+    /// - Live backing song audio rendering as notes roll down the highway
+    /// - 3D downward rolling rhythm highway with unculled depth rendering
+    /// - Direct keyboard testing (A/S/D/F/G or 1-5 direct strike, Space strum, Tab open)
+    /// - Direct Bluetooth Wiimote WebHID (no dongle needed)
+    /// - MeltySynth SoundFont 2 (.sf2) & General MIDI multi-instrument synthesis
+    /// - Native desktop file import dialogs for .sf2 and .mid
     /// </summary>
     public class AxeWiiGame : Game
     {
@@ -46,6 +49,7 @@ namespace AxeWii
         private float _judgmentTimer = 0f;
         private string _actionNotification = "";
         private float _notificationTimer = 0f;
+        private bool _playBackingTrack = true;
         private KeyboardState _prevKeyboardState;
 
         public AxeWiiGame()
@@ -120,6 +124,14 @@ namespace AxeWii
             _currentSong = song;
             _highway.CurrentSongTime = 0f;
             _highway.Bpm = song.Bpm;
+
+            foreach (var note in _currentSong.AllEvents)
+            {
+                note.Hit = false;
+                note.PlayedAudio = false;
+                note.StoppedAudio = false;
+            }
+
             _grade = new PerformanceGrade
             {
                 TotalNotes = song.AllEvents.Count
@@ -185,6 +197,18 @@ namespace AxeWii
             }
         }
 
+        private void HitFretDirect(string fret)
+        {
+            _guitar.State.Frets.Green = fret.Equals("green", StringComparison.OrdinalIgnoreCase);
+            _guitar.State.Frets.Red = fret.Equals("red", StringComparison.OrdinalIgnoreCase);
+            _guitar.State.Frets.Yellow = fret.Equals("yellow", StringComparison.OrdinalIgnoreCase);
+            _guitar.State.Frets.Blue = fret.Equals("blue", StringComparison.OrdinalIgnoreCase);
+            _guitar.State.Frets.Orange = fret.Equals("orange", StringComparison.OrdinalIgnoreCase);
+            _guitar.State.Frets.Open = fret.Equals("open", StringComparison.OrdinalIgnoreCase);
+
+            OnPlayerStrum("DOWN");
+        }
+
         private void OnPlayerStrum(string direction)
         {
             var frets = _guitar.State.Frets;
@@ -194,11 +218,11 @@ namespace AxeWii
             // Get all sounding chord pitches for this held combination
             var (pitches, fineCents, chordName) = _fingeringManager.GetChordPitches(fingeringId, octaveOffset);
 
-            // Play chord via low-latency SoundFont synth
-            _synth.PlayChord(pitches, 100);
+            // Play chord via low-latency SoundFont synth on player channel 0
+            _synth.PlayChord(pitches, 115);
 
-            // Check hit against highway notes (±120ms window)
-            float hitWindow = 0.12f;
+            // Check hit against highway notes (±140ms window)
+            float hitWindow = 0.14f;
             bool hitAny = false;
 
             string primaryFret = frets.Green ? "green" :
@@ -217,13 +241,13 @@ namespace AxeWii
                         hitAny = true;
                         float delta = Math.Abs(note.Time - _highway.CurrentSongTime);
 
-                        if (delta < 0.04f)
+                        if (delta < 0.045f)
                         {
                             _recentJudgment = "PERFECT!";
                             _grade.PerfectCount++;
                             _grade.Score += 150 * _grade.Multiplier;
                         }
-                        else if (delta < 0.08f)
+                        else if (delta < 0.09f)
                         {
                             _recentJudgment = "GREAT!";
                             _grade.GreatCount++;
@@ -240,7 +264,7 @@ namespace AxeWii
                         _grade.CurrentStreak++;
                         _grade.MaxCombo = Math.Max(_grade.MaxCombo, _grade.CurrentStreak);
                         _grade.Multiplier = Math.Min(4, 1 + _grade.CurrentStreak / 10);
-                        _judgmentTimer = 0.8f;
+                        _judgmentTimer = 0.9f;
                         break;
                     }
                 }
@@ -252,7 +276,7 @@ namespace AxeWii
                 _grade.MissCount++;
                 _grade.CurrentStreak = 0;
                 _grade.Multiplier = 1;
-                _judgmentTimer = 0.8f;
+                _judgmentTimer = 0.9f;
             }
         }
 
@@ -269,13 +293,39 @@ namespace AxeWii
             if (_highway.CurrentSongTime > _currentSong.Duration)
             {
                 _highway.CurrentSongTime = 0f;
-                foreach (var note in _currentSong.AllEvents) note.Hit = false;
+                foreach (var note in _currentSong.AllEvents)
+                {
+                    note.Hit = false;
+                    note.PlayedAudio = false;
+                    note.StoppedAudio = false;
+                }
             }
 
-            // 2. Process Wiimote 3D Motion (Pitch elevation & roll)
+            // 2. Play backing song audio notes in real-time as playhead reaches them
+            if (_playBackingTrack)
+            {
+                foreach (var note in _currentSong.AllEvents)
+                {
+                    if (!note.PlayedAudio && _highway.CurrentSongTime >= note.Time && _highway.CurrentSongTime < note.Time + 0.25f)
+                    {
+                        note.PlayedAudio = true;
+                        _synth.NoteOn(1, note.Pitch, (int)(note.Velocity * 0.85f));
+                    }
+                    if (note.PlayedAudio && !note.StoppedAudio && _highway.CurrentSongTime >= note.Time + Math.Max(0.12f, note.Duration))
+                    {
+                        note.StoppedAudio = true;
+                        _synth.NoteOff(1, note.Pitch);
+                    }
+                }
+            }
+
+            // 3. Continuously stream and refill audio buffers
+            _synth.Update();
+
+            // 4. Process Wiimote 3D Motion (Pitch elevation & roll)
             _motionProcessor.Process(_guitar.State.AccelX, _guitar.State.AccelY, _guitar.State.AccelZ);
 
-            // 3. Process Analog Thumbstick Live Fine-Tuning & Chord Modifier Cycling
+            // 5. Process Analog Thumbstick Live Fine-Tuning & Chord Modifier Cycling
             if (Math.Abs(_guitar.State.JoystickX) > 0.25f || Math.Abs(_guitar.State.JoystickY) > 0.25f)
             {
                 string heldId = FingeringManager.GetFingeringId(_guitar.State.Frets);
@@ -285,14 +335,14 @@ namespace AxeWii
                 }
             }
 
-            // 4. Apply Whammy Bar Dive Bomb
+            // 6. Apply Whammy Bar Dive Bomb
             _synth.WhammyBendSemitones = -_guitar.State.Whammy * 5.0f;
             _synth.SetPitchBend(0, _synth.WhammyBendSemitones);
 
-            // 5. Handle Keyboard Controls & Tab Switching
+            // 7. Handle Keyboard Controls & Tab Switching
             HandleKeyboardInput(kb);
 
-            // 6. Timers
+            // 8. Timers
             if (_judgmentTimer > 0f)
             {
                 _judgmentTimer -= dt;
@@ -305,7 +355,7 @@ namespace AxeWii
                 if (_notificationTimer <= 0f) _actionNotification = "";
             }
 
-            // 7. Update Window Title Telemetry
+            // 9. Update Window Title Telemetry
             string conn = _guitar.State.Connected ? $"[BT Connected: {_guitar.State.DeviceName}]" : "[Searching BT (Press 1+2)]";
             string judge = string.IsNullOrEmpty(_recentJudgment) ? "" : $" | {_recentJudgment}";
             Window.Title = $"AxeWii Studio - {_currentSong.Title} - Score: {_grade.Score:N0} ({_grade.Multiplier}X) Acc: {_grade.Accuracy:F1}%{judge} | {conn}";
@@ -329,9 +379,17 @@ namespace AxeWii
                 PromptImportFile();
             }
 
-            if (IsKeyPressed(kb, Keys.S))
+            if (IsKeyPressed(kb, Keys.S) && _hud.ActiveTab == ViewTab.FretTuning)
             {
                 PromptImportSoundFont();
+            }
+
+            // B: Toggle backing track audio
+            if (IsKeyPressed(kb, Keys.B))
+            {
+                _playBackingTrack = !_playBackingTrack;
+                if (!_playBackingTrack) _synth.StopAllNotes();
+                ShowNotification(_playBackingTrack ? "Song Backing Track: ON" : "Song Backing Track: MUTED (Strum-only Mode)");
             }
 
             // R: Refresh Library
@@ -397,26 +455,24 @@ namespace AxeWii
                 }
             }
 
-            // Keyboard fret holds (1=Green, 2=Red, 3=Yellow, 4=Blue, 5=Orange) when playing
-            if (_hud.ActiveTab != ViewTab.FretTuning)
+            // Direct keyboard fret hit & strum (A=Green, S=Red, D=Yellow, F=Blue, G=Orange)
+            if (IsKeyPressed(kb, Keys.A)) HitFretDirect("green");
+            if (IsKeyPressed(kb, Keys.S) && _hud.ActiveTab != ViewTab.FretTuning) HitFretDirect("red");
+            if (IsKeyPressed(kb, Keys.D)) HitFretDirect("yellow");
+            if (IsKeyPressed(kb, Keys.F)) HitFretDirect("blue");
+            if (IsKeyPressed(kb, Keys.G)) HitFretDirect("orange");
+
+            // Direct keyboard hit via number keys when on Highway tab
+            if (_hud.ActiveTab == ViewTab.Highway)
             {
-                if (kb.IsKeyDown(Keys.D1)) _guitar.State.Frets.Green = true;
-                else if (!_guitar.State.Connected) _guitar.State.Frets.Green = false;
-
-                if (kb.IsKeyDown(Keys.D2)) _guitar.State.Frets.Red = true;
-                else if (!_guitar.State.Connected) _guitar.State.Frets.Red = false;
-
-                if (kb.IsKeyDown(Keys.D3)) _guitar.State.Frets.Yellow = true;
-                else if (!_guitar.State.Connected) _guitar.State.Frets.Yellow = false;
-
-                if (kb.IsKeyDown(Keys.D4)) _guitar.State.Frets.Blue = true;
-                else if (!_guitar.State.Connected) _guitar.State.Frets.Blue = false;
-
-                if (kb.IsKeyDown(Keys.D5)) _guitar.State.Frets.Orange = true;
-                else if (!_guitar.State.Connected) _guitar.State.Frets.Orange = false;
+                if (IsKeyPressed(kb, Keys.D1)) HitFretDirect("green");
+                if (IsKeyPressed(kb, Keys.D2)) HitFretDirect("red");
+                if (IsKeyPressed(kb, Keys.D3)) HitFretDirect("yellow");
+                if (IsKeyPressed(kb, Keys.D4)) HitFretDirect("blue");
+                if (IsKeyPressed(kb, Keys.D5)) HitFretDirect("orange");
             }
 
-            // Space: Strum Down
+            // Space: Strum Down with currently held frets
             if (IsKeyPressed(kb, Keys.Space))
             {
                 OnPlayerStrum("DOWN");
@@ -425,12 +481,7 @@ namespace AxeWii
             // Tab: Open Strum
             if (IsKeyPressed(kb, Keys.Tab))
             {
-                _guitar.State.Frets.Green = false;
-                _guitar.State.Frets.Red = false;
-                _guitar.State.Frets.Yellow = false;
-                _guitar.State.Frets.Blue = false;
-                _guitar.State.Frets.Orange = false;
-                OnPlayerStrum("DOWN");
+                HitFretDirect("open");
             }
 
             // M: Toggle Built-in Demo Songs
@@ -476,6 +527,11 @@ namespace AxeWii
             // 1. Draw 3D Rhythm Highway (Notes rolling DOWN towards player)
             if (_hud.ActiveTab == ViewTab.Highway)
             {
+                // Ensure clean 3D states unaffected by SpriteBatch
+                GraphicsDevice.DepthStencilState = DepthStencilState.Default;
+                GraphicsDevice.RasterizerState = RasterizerState.CullNone;
+                GraphicsDevice.BlendState = BlendState.Opaque;
+
                 _highway.Draw(_spriteBatch, _guitar.State, _currentSong.AllEvents);
 
                 // 2. Draw 3D Guitar Body & Neck Visualizer tilting with real Wiimote pitch and roll
