@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <TieredCompilation>false</TieredCompilation>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AxeWii</RootNamespace>
+    <AssemblyName>AxeWii</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MonoGame Cross-Platform DesktopGL Framework -->
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.1.303" />
+    <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.1.303" />
+    
+    <!-- Direct HID Communication for Bluetooth Wiimote (No Dongle Needed) -->
+    <PackageReference Include="HidSharp" Version="2.1.0" />
+    
+    <!-- High-Performance C# SoundFont 2 (SF2) & General MIDI Synthesizer -->
+    <PackageReference Include="MeltySynth" Version="2.4.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <MonoGameContentReference Include="Content\Content.mgcb" />
+  </ItemGroup>
+</Project>
