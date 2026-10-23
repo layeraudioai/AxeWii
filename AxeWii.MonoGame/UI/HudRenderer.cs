@@ -61,16 +61,18 @@ namespace AxeWii.UI
             float songDuration,
             int bpm,
             string recentJudgment,
-            string actionNotification)
+            string actionNotification,
+            bool isPaused,
+            bool isLeftHanded)
         {
-            // 1. Draw Top Header with Tab Switcher & Connection Status
-            DrawTopBar(spriteBatch, screenWidth, guitar, actionNotification);
+            // 1. Draw Top Header with Tab Switcher, Handedness & Connection Status
+            DrawTopBar(spriteBatch, screenWidth, guitar, actionNotification, isPaused, isLeftHanded);
 
             // 2. Draw Active Tab Content
             switch (ActiveTab)
             {
                 case ViewTab.Highway:
-                    DrawHighwayHud(spriteBatch, screenWidth, screenHeight, grade, recentJudgment, currentSongTitle, songTime, songDuration, bpm);
+                    DrawHighwayHud(spriteBatch, screenWidth, screenHeight, grade, recentJudgment, currentSongTitle, songTime, songDuration, bpm, isPaused, isLeftHanded);
                     break;
                 case ViewTab.FretTuning:
                     DrawFretTuningPanel(spriteBatch, screenWidth, screenHeight, guitar, fingeringManager, synth, fileLib);
@@ -90,7 +92,7 @@ namespace AxeWii.UI
             DrawBottomBar(spriteBatch, screenWidth, screenHeight);
         }
 
-        private void DrawTopBar(SpriteBatch sb, int width, GuitarState guitar, string notification)
+        private void DrawTopBar(SpriteBatch sb, int width, GuitarState guitar, string notification, bool isPaused, bool isLeftHanded)
         {
             _font.DrawRectangle(sb, new Rectangle(0, 0, width, 44), HeaderBg);
             _font.DrawBorder(sb, new Rectangle(0, 0, width, 44), BorderColor);
@@ -101,24 +103,32 @@ namespace AxeWii.UI
 
             // Tabs: F1 to F5
             string[] tabs = { "F1: HIGHWAY", "F2: TUNINGS & SF2", "F3: MOTION", "F4: MIDI SONGS", "F5: HARDWARE" };
-            int tabX = 220;
+            int tabX = 200;
             for (int i = 0; i < tabs.Length; i++)
             {
                 bool active = (int)ActiveTab == i;
-                Rectangle tabRect = new Rectangle(tabX, 8, 115, 28);
+                Rectangle tabRect = new Rectangle(tabX, 8, 108, 28);
                 if (active)
                 {
                     _font.DrawRectangle(sb, tabRect, new Color(30, 41, 59));
                     _font.DrawBorder(sb, tabRect, AccentCyan);
                 }
-                _font.DrawString(sb, tabs[i], new Vector2(tabX + 8, 14), active ? AccentCyan : Color.Gray, 1.5f);
-                tabX += 122;
+                _font.DrawString(sb, tabs[i], new Vector2(tabX + 6, 14), active ? AccentCyan : Color.Gray, 1.4f);
+                tabX += 114;
             }
 
+            // Play/Pause badge & Handedness badge
+            string playStatus = isPaused ? "[PAUSED (P)]" : "[PLAYING]";
+            Color playCol = isPaused ? AccentGold : AccentGreen;
+            _font.DrawString(sb, playStatus, new Vector2(tabX + 10, 14), playCol, 1.6f);
+
+            string handStatus = isLeftHanded ? "[LEFTY (L)]" : "[RIGHTY (L)]";
+            _font.DrawString(sb, handStatus, new Vector2(tabX + 115, 14), AccentPurple, 1.6f);
+
             // Wiimote connection pill on the right
-            string connText = guitar.Connected ? "[BLUETOOTH WIIMOTE: CONNECTED]" : "[PRESS 1+2 ON WIIMOTE TO PAIR]";
+            string connText = guitar.Connected ? "[BT: CONNECTED]" : "[BT: PRESS 1+2]";
             Color connCol = guitar.Connected ? AccentGreen : AccentGold;
-            _font.DrawString(sb, connText, new Vector2(width - 320, 14), connCol, 1.6f);
+            _font.DrawString(sb, connText, new Vector2(width - 170, 14), connCol, 1.6f);
 
             // Live action notification banner if active
             if (!string.IsNullOrEmpty(notification))
@@ -130,7 +140,8 @@ namespace AxeWii.UI
         private void DrawHighwayHud(
             SpriteBatch sb, int width, int height,
             PerformanceGrade grade, string judgment,
-            string songTitle, float time, float dur, int bpm)
+            string songTitle, float time, float dur, int bpm,
+            bool isPaused, bool isLeftHanded)
         {
             // Left Card: Score & Multiplier
             Rectangle scoreCard = new Rectangle(20, 60, 240, 140);
@@ -161,7 +172,26 @@ namespace AxeWii.UI
             _font.DrawString(sb, songTitle, new Vector2(width - 245, 75), Color.White, 1.8f);
             _font.DrawString(sb, $"{bpm} BPM | {grade.Accuracy:F1}% ACCURACY", new Vector2(width - 245, 105), AccentGold, 1.6f);
             _font.DrawString(sb, $"GRADE: {grade.LetterGrade}", new Vector2(width - 245, 130), AccentPurple, 2.4f);
-            _font.DrawString(sb, $"TIME: {time:F1}s / {dur:F1}s", new Vector2(width - 245, 165), Color.LightGray, 1.6f);
+            string timeStatus = isPaused ? $"TIME: {time:F1}s / {dur:F1}s [PAUSED]" : $"TIME: {time:F1}s / {dur:F1}s";
+            _font.DrawString(sb, timeStatus, new Vector2(width - 245, 165), isPaused ? AccentGold : Color.LightGray, 1.6f);
+
+            // Center Overlay: Prominent Pause & Handedness Card when Paused
+            if (isPaused)
+            {
+                int cardW = 560;
+                int cardH = 145;
+                Rectangle pauseCard = new Rectangle((width - cardW) / 2, (height - cardH) / 2 - 30, cardW, cardH);
+                _font.DrawRectangle(sb, pauseCard, new Color(11, 17, 32, 245));
+                _font.DrawBorder(sb, pauseCard, AccentGold, 2);
+
+                _font.DrawString(sb, "PAUSED", new Vector2((width - cardW) / 2 + 225, pauseCard.Y + 16), AccentGold, 3.2f);
+                _font.DrawString(sb, "Press [P] or [SPACE] to Play / Resume | [Home] to Rewind", new Vector2((width - cardW) / 2 + 35, pauseCard.Y + 58), Color.White, 1.8f);
+
+                string handDesc = isLeftHanded ? "LEFT-HANDED / LEFTY FLIP (Green on Right)" : "RIGHT-HANDED (Green on Left)";
+                Color handColor = isLeftHanded ? AccentPurple : AccentGreen;
+                _font.DrawString(sb, $"Press [L] to Swap Handedness: {handDesc}", new Vector2((width - cardW) / 2 + 25, pauseCard.Y + 86), handColor, 1.7f);
+                _font.DrawString(sb, "Practice notes anytime: A/S/D/F/G or 1-5 frets, Space to strum", new Vector2((width - cardW) / 2 + 32, pauseCard.Y + 114), Color.LightGray, 1.5f);
+            }
         }
 
         private void DrawFretTuningPanel(
@@ -329,7 +359,8 @@ namespace AxeWii.UI
             // Quick Hardware Test Actions
             _font.DrawString(sb, "HARDWARE TEST HOTKEYS:", new Vector2(75, 395), AccentGold, 2.0f);
             _font.DrawString(sb, "Press 'T' -> Send Test Rumble pulse (250ms motor burst)", new Vector2(95, 425), Color.White, 1.8f);
-            _font.DrawString(sb, "Press 'P' -> Toggle WebHID Preset (User Custom <-> Standard Les Paul)", new Vector2(95, 455), Color.White, 1.8f);
+            _font.DrawString(sb, "Press 'C' -> Toggle WebHID Preset (User Custom <-> Standard Les Paul)", new Vector2(95, 455), Color.White, 1.8f);
+            _font.DrawString(sb, "Press 'L' -> Swap Left-Handed / Right-Handed Mode", new Vector2(95, 485), AccentPurple, 1.8f);
         }
 
         private void DrawBottomBar(SpriteBatch sb, int width, int height)
@@ -337,8 +368,8 @@ namespace AxeWii.UI
             _font.DrawRectangle(sb, new Rectangle(0, height - 32, width, 32), HeaderBg);
             _font.DrawBorder(sb, new Rectangle(0, height - 32, width, 32), BorderColor);
 
-            string help = "HOTKEYS: [F1-F5] Tabs | [O] Import MIDI/SF2 | [S] Import SF2 | [M] Song Toggle | [1-5] Frets | [Space] Strum | [T] Rumble | [Esc] Exit";
-            _font.DrawString(sb, help, new Vector2(16, height - 22), Color.Gray, 1.5f);
+            string help = "HOTKEYS: [P] Play/Pause | [L] Left/Righty | [Home] Rewind | [1-5]/[A-G] Frets | [Space] Strum | [O] Import | [M] Songs | [F1-F5] Tabs";
+            _font.DrawString(sb, help, new Vector2(16, height - 22), Color.Gray, 1.45f);
         }
     }
 }

@@ -50,6 +50,8 @@ namespace AxeWii
         private string _actionNotification = "";
         private float _notificationTimer = 0f;
         private bool _playBackingTrack = true;
+        private bool _isPaused = true;            // Paused by default as requested!
+        private bool _isLeftHanded = false;        // Default: Right-Handed (Green on Left)
         private KeyboardState _prevKeyboardState;
 
         public AxeWiiGame()
@@ -71,7 +73,10 @@ namespace AxeWii
             _synth = new SoundFontSynthEngine();
             _fingeringManager = new FingeringManager();
             _motionProcessor = new MotionProcessor();
-            _highway = new HighwayRenderer3D(GraphicsDevice);
+            _highway = new HighwayRenderer3D(GraphicsDevice)
+            {
+                IsLeftHanded = _isLeftHanded
+            };
             _guitarVisualizer = new GuitarVisualizer3D(GraphicsDevice);
             _hud = new HudRenderer(GraphicsDevice);
             _fileLib = new FileLibraryManager();
@@ -124,6 +129,7 @@ namespace AxeWii
             _currentSong = song;
             _highway.CurrentSongTime = 0f;
             _highway.Bpm = song.Bpm;
+            _isPaused = true; // Song paused by default
 
             foreach (var note in _currentSong.AllEvents)
             {
@@ -136,7 +142,7 @@ namespace AxeWii
             {
                 TotalNotes = song.AllEvents.Count
             };
-            ShowNotification($"Loaded Song: {song.Title} ({song.AllEvents.Count} notes, {song.Bpm} BPM)");
+            ShowNotification($"Loaded Song: {song.Title} (PAUSED - Press [P] or [SPACE] to Play)");
         }
 
         public void PromptImportFile()
@@ -288,33 +294,36 @@ namespace AxeWii
             if (kb.IsKeyDown(Keys.Escape))
                 Exit();
 
-            // 1. Advance song highway time
-            _highway.CurrentSongTime += dt;
-            if (_highway.CurrentSongTime > _currentSong.Duration)
+            // 1. Advance song highway time if not paused
+            if (!_isPaused)
             {
-                _highway.CurrentSongTime = 0f;
-                foreach (var note in _currentSong.AllEvents)
+                _highway.CurrentSongTime += dt;
+                if (_highway.CurrentSongTime > _currentSong.Duration)
                 {
-                    note.Hit = false;
-                    note.PlayedAudio = false;
-                    note.StoppedAudio = false;
-                }
-            }
-
-            // 2. Play backing song audio notes in real-time as playhead reaches them
-            if (_playBackingTrack)
-            {
-                foreach (var note in _currentSong.AllEvents)
-                {
-                    if (!note.PlayedAudio && _highway.CurrentSongTime >= note.Time && _highway.CurrentSongTime < note.Time + 0.25f)
+                    _highway.CurrentSongTime = 0f;
+                    foreach (var note in _currentSong.AllEvents)
                     {
-                        note.PlayedAudio = true;
-                        _synth.NoteOn(1, note.Pitch, (int)(note.Velocity * 0.85f));
+                        note.Hit = false;
+                        note.PlayedAudio = false;
+                        note.StoppedAudio = false;
                     }
-                    if (note.PlayedAudio && !note.StoppedAudio && _highway.CurrentSongTime >= note.Time + Math.Max(0.12f, note.Duration))
+                }
+
+                // 2. Play backing song audio notes in real-time as playhead reaches them
+                if (_playBackingTrack)
+                {
+                    foreach (var note in _currentSong.AllEvents)
                     {
-                        note.StoppedAudio = true;
-                        _synth.NoteOff(1, note.Pitch);
+                        if (!note.PlayedAudio && _highway.CurrentSongTime >= note.Time && _highway.CurrentSongTime < note.Time + 0.25f)
+                        {
+                            note.PlayedAudio = true;
+                            _synth.NoteOn(1, note.Pitch, (int)(note.Velocity * 0.85f));
+                        }
+                        if (note.PlayedAudio && !note.StoppedAudio && _highway.CurrentSongTime >= note.Time + Math.Max(0.12f, note.Duration))
+                        {
+                            note.StoppedAudio = true;
+                            _synth.NoteOff(1, note.Pitch);
+                        }
                     }
                 }
             }
@@ -358,7 +367,9 @@ namespace AxeWii
             // 9. Update Window Title Telemetry
             string conn = _guitar.State.Connected ? $"[BT Connected: {_guitar.State.DeviceName}]" : "[Searching BT (Press 1+2)]";
             string judge = string.IsNullOrEmpty(_recentJudgment) ? "" : $" | {_recentJudgment}";
-            Window.Title = $"AxeWii Studio - {_currentSong.Title} - Score: {_grade.Score:N0} ({_grade.Multiplier}X) Acc: {_grade.Accuracy:F1}%{judge} | {conn}";
+            string pauseTag = _isPaused ? " [PAUSED]" : " [PLAYING]";
+            string handTag = _isLeftHanded ? " [Lefty Flip]" : " [Right-Handed]";
+            Window.Title = $"AxeWii Studio - {_currentSong.Title}{pauseTag}{handTag} - Score: {_grade.Score:N0} ({_grade.Multiplier}X) Acc: {_grade.Accuracy:F1}%{judge} | {conn}";
 
             _prevKeyboardState = kb;
             base.Update(gameTime);
@@ -372,6 +383,39 @@ namespace AxeWii
             if (IsKeyPressed(kb, Keys.F3)) _hud.ActiveTab = ViewTab.Motion;
             if (IsKeyPressed(kb, Keys.F4)) _hud.ActiveTab = ViewTab.MidiStudio;
             if (IsKeyPressed(kb, Keys.F5)) _hud.ActiveTab = ViewTab.Diagnostics;
+
+            // P: Play / Pause Toggle
+            if (IsKeyPressed(kb, Keys.P))
+            {
+                _isPaused = !_isPaused;
+                if (_isPaused) _synth.StopAllNotes();
+                ShowNotification(_isPaused ? "Song PAUSED (Press [P] or [SPACE] to Resume)" : "Song PLAYING");
+            }
+
+            // L: Left-Handed / Right-Handed Mode Swap
+            if (IsKeyPressed(kb, Keys.L))
+            {
+                _isLeftHanded = !_isLeftHanded;
+                _highway.IsLeftHanded = _isLeftHanded;
+                ShowNotification(_isLeftHanded 
+                    ? "Handedness: LEFT-HANDED / LEFTY FLIP (Green on Right)" 
+                    : "Handedness: RIGHT-HANDED (Green on Left)");
+            }
+
+            // Home / Backspace: Rewind Song to Beginning
+            if (IsKeyPressed(kb, Keys.Home) || IsKeyPressed(kb, Keys.Back))
+            {
+                _highway.CurrentSongTime = 0f;
+                _synth.StopAllNotes();
+                foreach (var note in _currentSong.AllEvents)
+                {
+                    note.Hit = false;
+                    note.PlayedAudio = false;
+                    note.StoppedAudio = false;
+                }
+                _grade = new PerformanceGrade { TotalNotes = _currentSong.AllEvents.Count };
+                ShowNotification("Song Rewound to Beginning (Paused)");
+            }
 
             // Import Hotkeys: O / I -> Universal Import; S -> SoundFont Import
             if (IsKeyPressed(kb, Keys.O) || IsKeyPressed(kb, Keys.I))
@@ -472,10 +516,22 @@ namespace AxeWii
                 if (IsKeyPressed(kb, Keys.D5)) HitFretDirect("orange");
             }
 
-            // Space: Strum Down with currently held frets
+            // Space: If paused and no frets held, unpauses; otherwise Strum Down with currently held frets
             if (IsKeyPressed(kb, Keys.Space))
             {
-                OnPlayerStrum("DOWN");
+                bool anyFret = _guitar.State.Frets.Green || _guitar.State.Frets.Red || 
+                               _guitar.State.Frets.Yellow || _guitar.State.Frets.Blue || 
+                               _guitar.State.Frets.Orange;
+
+                if (_isPaused && !anyFret)
+                {
+                    _isPaused = false;
+                    ShowNotification("Song PLAYING (Press [P] to Pause)");
+                }
+                else
+                {
+                    OnPlayerStrum("DOWN");
+                }
             }
 
             // Tab: Open Strum
@@ -498,8 +554,8 @@ namespace AxeWii
                 ShowNotification("Sent 250ms Test Rumble Pulse to Wiimote");
             }
 
-            // P: Toggle Preset (UserCustom <-> StandardLesPaul)
-            if (IsKeyPressed(kb, Keys.P))
+            // C: Toggle WebHID Preset (UserCustom <-> StandardLesPaul)
+            if (IsKeyPressed(kb, Keys.C))
             {
                 _guitar.Preset = _guitar.Preset == WebHidPreset.UserCustom ? WebHidPreset.StandardLesPaul : WebHidPreset.UserCustom;
                 ShowNotification($"WebHID Preset Changed to: {_guitar.Preset}");
@@ -534,8 +590,8 @@ namespace AxeWii
 
                 _highway.Draw(_spriteBatch, _guitar.State, _currentSong.AllEvents);
 
-                // 2. Draw 3D Guitar Body & Neck Visualizer tilting with real Wiimote pitch and roll
-                _guitarVisualizer.Draw(_guitar.State, _motionProcessor.State);
+                // 2. Draw 3D Guitar Body & Neck Visualizer tilting with real Wiimote pitch and roll (mirrors if left-handed)
+                _guitarVisualizer.Draw(_guitar.State, _motionProcessor.State, _isLeftHanded);
             }
 
             // 3. Draw 2D Comprehensive HUD & Active Panel
@@ -555,7 +611,9 @@ namespace AxeWii
                 _currentSong.Duration,
                 _highway.Bpm,
                 _recentJudgment,
-                _actionNotification
+                _actionNotification,
+                _isPaused,
+                _isLeftHanded
             );
             _spriteBatch.End();
 

@@ -22,6 +22,7 @@ namespace AxeWii.Graphics
         public float HighwayLookaheadSeconds { get; set; } = 2.6f;
         public float CurrentSongTime { get; set; } = 0f;
         public int Bpm { get; set; } = 120;
+        public bool IsLeftHanded { get; set; } = false;
 
         // Fret lane colors (matching classic Guitar Hero layout)
         public static readonly Color ColorGreen = new Color(34, 197, 94);
@@ -41,6 +42,18 @@ namespace AxeWii.Graphics
                 View = Matrix.CreateLookAt(new Vector3(0, 3.8f, -4.2f), new Vector3(0, 0.6f, 2.5f), Vector3.Up),
                 World = Matrix.Identity
             };
+        }
+
+        /// <summary>
+        /// Computes the 3D world X coordinate for a fret lane.
+        /// In Right-Handed mode: Green is on Screen-LEFT (+X world), Orange is on Screen-RIGHT (-X world).
+        /// In Left-Handed / Lefty-Flip mode: Green is on Screen-RIGHT (-X world), Orange is on Screen-LEFT (+X world).
+        /// </summary>
+        public float GetLaneWorldX(int laneIndex, float halfWidth)
+        {
+            int visualLane = IsLeftHanded ? (4 - laneIndex) : laneIndex;
+            float screenFrac = (visualLane + 0.5f) / 5f;
+            return MathHelper.Lerp(halfWidth, -halfWidth, screenFrac);
         }
 
         public void Draw(SpriteBatch spriteBatch, GuitarState controllerState, List<NoteEvent> notes)
@@ -97,8 +110,8 @@ namespace AxeWii.Graphics
             for (int i = 1; i < 5; i++)
             {
                 float frac = i / 5.0f;
-                float nearX = MathHelper.Lerp(-2.4f, 2.4f, frac);
-                float farX = MathHelper.Lerp(-1.1f, 1.1f, frac);
+                float nearX = MathHelper.Lerp(2.4f, -2.4f, frac);
+                float farX = MathHelper.Lerp(1.1f, -1.1f, frac);
 
                 VertexPositionColor[] line = new VertexPositionColor[2]
                 {
@@ -178,7 +191,7 @@ namespace AxeWii.Graphics
 
             for (int i = 0; i < 5; i++)
             {
-                float x = MathHelper.Lerp(-2.4f, 2.4f, (i + 0.5f) / 5f);
+                float x = GetLaneWorldX(i, 2.4f);
                 bool held = states[i];
                 Color c = held ? Color.White : colors[i] * 0.5f;
                 float r = held ? 0.22f : 0.17f;
@@ -238,7 +251,7 @@ namespace AxeWii.Graphics
                     else
                     {
                         int laneIndex = GetLaneIndex(note.Fret);
-                        float laneX = MathHelper.Lerp(-halfWidth, halfWidth, (laneIndex + 0.5f) / 5f);
+                        float laneX = GetLaneWorldX(laneIndex, halfWidth);
                         float gemRadius = MathHelper.Lerp(0.12f, 0.28f, progress);
 
                         DrawNoteGem(laneX, z, gemRadius, gemColor);

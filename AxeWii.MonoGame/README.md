@@ -93,14 +93,17 @@ dotnet build
 
 ### Keyboard (Testing & Direct Play)
 - **F1 - F5**: Switch Studio Tabs (Highway, Tunings & SF2, Motion, MIDI Songs, Hardware)
+- **P**: Toggle Play / Pause (Song starts **Paused by default** so you can practice or tune!)
+- **L**: Swap Handedness between **Right-Handed** (Standard: Green on Left) and **Left-Handed** (Lefty Flip: Green on Right)
+- **Home / Backspace**: Rewind song playhead to 0.0s (Paused)
+- **Space**: Strum Down (or unpause if paused with no frets held)
+- **1, 2, 3, 4, 5** or **A, S, D, F, G**: Frets (Green, Red, Yellow, Blue, Orange)
+- **Tab**: Open Note Strum (Purple Strike Bar)
 - **O / I**: Open File Dialog to import MIDI or SF2
-- **S**: Open File Dialog to import SoundFont (.sf2)
+- **S**: Open File Dialog to import SoundFont (.sf2) in F2 tab
 - **R**: Refresh `Songs/` and `SoundFonts/` library
 - **[ / ]**: Previous / Next SoundFont preset
-- **1, 2, 3, 4, 5**: Hold Green, Red, Yellow, Blue, Orange frets
-- **Tab**: Open Note Strum
-- **Space**: Strum Down
 - **M**: Switch Built-in Demo Songs (Rock Anthem <-> Blues Odyssey)
 - **T**: Send Test Rumble Pulse to Wiimote
-- **P**: Toggle WebHID Preset (`UserCustom` <-> `StandardLesPaul`)
+- **C**: Toggle WebHID Controller Preset (`UserCustom` <-> `StandardLesPaul`)
 - **Esc**: Exit

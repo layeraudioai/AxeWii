@@ -43,15 +43,19 @@ namespace AxeWii.Graphics
             };
         }
 
-        public void Draw(GuitarState guitar, SpatialMotionState motion)
+        public void Draw(GuitarState guitar, SpatialMotionState motion, bool isLeftHanded = false)
         {
             // Apply physical Wiimote Pitch (tilt elevation) & Roll (rotation) to 3D model
             float pitchRad = MathHelper.ToRadians(motion.Pitch * 0.7f);
-            float rollRad = MathHelper.ToRadians(-motion.Roll * 0.7f);
+            float rollRad = MathHelper.ToRadians((isLeftHanded ? motion.Roll : -motion.Roll) * 0.7f);
 
-            Matrix guitarTransform = Matrix.CreateRotationZ(rollRad) * 
+            Matrix mirror = isLeftHanded ? Matrix.CreateScale(-1f, 1f, 1f) : Matrix.Identity;
+            float posX = isLeftHanded ? -2.4f : 2.4f;
+
+            Matrix guitarTransform = mirror * 
+                                    Matrix.CreateRotationZ(rollRad) * 
                                     Matrix.CreateRotationX(pitchRad) * 
-                                    Matrix.CreateTranslation(new Vector3(2.4f, -0.6f, -1.0f));
+                                    Matrix.CreateTranslation(new Vector3(posX, -0.6f, -1.0f));
 
             _effect.World = guitarTransform;
 
